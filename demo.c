@@ -4,16 +4,18 @@
 #include "SDL.h"
 #include "demo.h"
 
-#define WIDTH   320
-#define HEIGHT  240
+#define RESMUL  (10 * 2 * 2 * 3)
+
+#define WIDTH   (RESMUL * 8)
+#define HEIGHT  (RESMUL * 5)
 #define SCALE   sqrt(HEIGHT * WIDTH)
 #define FPS     30
 
 #define SHIP_MAX      4
 #define JOYSTICK_MAX  4
 
-#define SHIP_ACCEL   (1/1.0)
-#define SHIP_DRAG    (3/4.0)
+#define SHIP_ACCEL   (1/8.0)
+#define SHIP_DRAG    (1/4.0)
 #define SHIP_TACCEL  (4/1.0)
 #define SHIP_TDRAG   (63/64.0)
 
@@ -82,7 +84,7 @@ int main(int argc, char **argv) {
 
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK);
   SDL_ShowCursor(0);
-  SDL_SetVideoMode(WIDTH, HEIGHT, 32, 0);
+  SDL_SetVideoMode(WIDTH, HEIGHT, 32, SDL_FULLSCREEN);
   sdl_surface = SDL_GetVideoSurface();
 
   { /* Initialize Canvas */
