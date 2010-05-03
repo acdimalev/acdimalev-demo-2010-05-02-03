@@ -35,11 +35,48 @@ float frand() {
   return (float) rand() / RAND_MAX;
 }
 
+void polygon_render(
+  cairo_t *cr,
+  cairo_matrix_t *cm_display,
+  cairo_matrix_t *cm_object) {
+
+  int i;
+
+  cairo_set_matrix(cr, cm_display);
+  cairo_transform(cr, cm_object);
+  cairo_new_sub_path(cr);
+  for (i = 0; i < polygon.n; i = i + 1) {
+    cairo_line_to(cr, polygon.v[i][0], polygon.v[i][1]);
+  }
+  cairo_close_path(cr);
+}
+
+void polygon_render_wrap(
+  cairo_t *cr,
+  cairo_matrix_t *cm_display,
+  cairo_matrix_t *cm_object) {
+
+  cairo_matrix_t cm_wrap_object;
+
+  cairo_matrix_init_translate(&cm_wrap_object, 0, 0);
+  cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
+  polygon_render(cr, cm_display, &cm_wrap_object);
+  cairo_matrix_init_translate(&cm_wrap_object, -WIDTH/SCALE, 0);
+  cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
+  polygon_render(cr, cm_display, &cm_wrap_object);
+  cairo_matrix_init_translate(&cm_wrap_object, 0, -HEIGHT/SCALE);
+  cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
+  polygon_render(cr, cm_display, &cm_wrap_object);
+  cairo_matrix_init_translate(&cm_wrap_object, -WIDTH/SCALE, -HEIGHT/SCALE);
+  cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
+  polygon_render(cr, cm_display, &cm_wrap_object);
+}
+
 int main(int argc, char **argv) {
   SDL_Surface *sdl_surface;
   Uint32 next_frame;
   cairo_t *cr;
-  cairo_matrix_t cairo_matrix_display;
+  cairo_matrix_t cm_display;
 
   int running;
 
@@ -62,7 +99,7 @@ int main(int argc, char **argv) {
   }
 
   {
-    cairo_matrix_t *m = &cairo_matrix_display;
+    cairo_matrix_t *m = &cm_display;
 
     cairo_matrix_init_identity(m);
 
@@ -114,16 +151,15 @@ int main(int argc, char **argv) {
 
       // Draw Ships
       for (j = 0; j < SHIP_MAX; j = j + 1) {
+        cairo_matrix_t cm_object;
+
         if (! ships[j].is_alive) { continue; }
 
-        cairo_set_matrix(cr, &cairo_matrix_display);
-        cairo_translate(cr, ships[j].x, ships[j].y);
-        cairo_rotate(cr, ships[j].a);
-        cairo_new_sub_path(cr);
-        for (i = 0; i < polygon.n; i = i + 1) {
-          cairo_line_to(cr, polygon.v[i][0], polygon.v[i][1]);
-        }
-        cairo_close_path(cr);
+        cairo_matrix_init_identity(&cm_object);
+        cairo_matrix_translate(&cm_object, ships[j].x, ships[j].y);
+        cairo_matrix_rotate(&cm_object, ships[j].a);
+
+        polygon_render_wrap(cr, &cm_display, &cm_object);
       }
 
       cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
@@ -199,8 +235,8 @@ printf("foo\n");
           joysticks[j].ship = i;
 
           ships[i].is_alive = 1;
-          ships[i].x = WIDTH/SCALE * ( frand() - 1/2.0 );
-          ships[i].y = HEIGHT/SCALE * ( frand() - 1/2.0 );
+          ships[i].x = WIDTH/SCALE * frand();
+          ships[i].y = HEIGHT/SCALE * frand();
           ships[i].a = 2*M_PI * frand();
         }
       }
@@ -225,6 +261,20 @@ printf("foo\n");
         ships[i].xv = ships[i].xv * pow(1.0 - SHIP_DRAG,  1.0/FPS);
         ships[i].yv = ships[i].yv * pow(1.0 - SHIP_DRAG,  1.0/FPS);
         ships[i].av = ships[i].av * pow(1.0 - SHIP_TDRAG, 1.0/FPS);
+
+        // wrap
+        if (ships[i].x < 0) {
+          ships[i].x = ships[i].x + WIDTH/SCALE;
+        }
+        if (ships[i].x > WIDTH/SCALE) {
+          ships[i].x = ships[i].x - WIDTH/SCALE;
+        }
+        if (ships[i].y < 0) {
+          ships[i].y = ships[i].y + HEIGHT/SCALE;
+        }
+        if (ships[i].y > HEIGHT/SCALE) {
+          ships[i].y = ships[i].y - HEIGHT/SCALE;
+        }
       }
     }
 
