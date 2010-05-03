@@ -4,7 +4,7 @@
 #include "SDL.h"
 #include "demo.h"
 
-#define RESMUL  (10 * 2 * 2 * 3)
+#define RESMUL  (10 * 2 * 2 * 2 * 2)
 
 #define WIDTH   (RESMUL * 8)
 #define HEIGHT  (RESMUL * 5)
@@ -18,8 +18,15 @@
 #define SHIP_DRAG    (1/4.0)
 #define SHIP_TACCEL  (4/1.0)
 #define SHIP_TDRAG   (63/64.0)
+#define SHIP_RADIUS  (1/16.0 / 2.0)
 
-struct polygon polygon;
+#define BULLET_VELOCITY (1/32.0)
+#define BULLET_TIME (1024/4.0)
+#define BULLET_RADIUS  (1/64.0 / 2.0)
+
+struct polygon polygons[2];
+
+enum polygon_enum { POLYGON_SHIP, POLYGON_BULLET };
 
 struct joystick {
     int is_alive;
@@ -31,13 +38,21 @@ struct ship {
     int is_alive;
     float x, y, a, xv, yv, av;
     float steer, gas;
+    int shoot;
   } ships[SHIP_MAX];
+
+struct bullet {
+    int is_alive;
+    Uint32 when;
+    float x, y, a;
+  } bullets[SHIP_MAX];
 
 float frand() {
   return (float) rand() / RAND_MAX;
 }
 
 void polygon_render(
+  struct polygon *polygon,
   cairo_t *cr,
   cairo_matrix_t *cm_display,
   cairo_matrix_t *cm_object) {
@@ -47,13 +62,14 @@ void polygon_render(
   cairo_set_matrix(cr, cm_display);
   cairo_transform(cr, cm_object);
   cairo_new_sub_path(cr);
-  for (i = 0; i < polygon.n; i = i + 1) {
-    cairo_line_to(cr, polygon.v[i][0], polygon.v[i][1]);
+  for (i = 0; i < polygon->n; i = i + 1) {
+    cairo_line_to(cr, polygon->v[i][0], polygon->v[i][1]);
   }
   cairo_close_path(cr);
 }
 
 void polygon_render_wrap(
+  struct polygon *polygon,
   cairo_t *cr,
   cairo_matrix_t *cm_display,
   cairo_matrix_t *cm_object) {
@@ -62,16 +78,16 @@ void polygon_render_wrap(
 
   cairo_matrix_init_translate(&cm_wrap_object, 0, 0);
   cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
-  polygon_render(cr, cm_display, &cm_wrap_object);
+  polygon_render(polygon, cr, cm_display, &cm_wrap_object);
   cairo_matrix_init_translate(&cm_wrap_object, -WIDTH/SCALE, 0);
   cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
-  polygon_render(cr, cm_display, &cm_wrap_object);
+  polygon_render(polygon, cr, cm_display, &cm_wrap_object);
   cairo_matrix_init_translate(&cm_wrap_object, 0, -HEIGHT/SCALE);
   cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
-  polygon_render(cr, cm_display, &cm_wrap_object);
+  polygon_render(polygon, cr, cm_display, &cm_wrap_object);
   cairo_matrix_init_translate(&cm_wrap_object, -WIDTH/SCALE, -HEIGHT/SCALE);
   cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
-  polygon_render(cr, cm_display, &cm_wrap_object);
+  polygon_render(polygon, cr, cm_display, &cm_wrap_object);
 }
 
 int main(int argc, char **argv) {
@@ -121,7 +137,8 @@ int main(int argc, char **argv) {
 
     running = 1;
 
-    polygon_load_ship(&polygon);
+    polygon_load_ship(&polygons[POLYGON_SHIP]);
+    polygon_load_bullet(&polygons[POLYGON_BULLET]);
 
     for (i = 0; i < JOYSTICK_MAX; i = i + 1) {
       SDL_Joystick *sdl_joystick;
@@ -137,6 +154,7 @@ int main(int argc, char **argv) {
 
     for (i = 0; i < SHIP_MAX; i = i + 1) {
       ships[i].is_alive = 0;
+      bullets[i].is_alive = 0;
     }
   }
 
@@ -161,7 +179,21 @@ int main(int argc, char **argv) {
         cairo_matrix_translate(&cm_object, ships[j].x, ships[j].y);
         cairo_matrix_rotate(&cm_object, ships[j].a);
 
-        polygon_render_wrap(cr, &cm_display, &cm_object);
+        polygon_render_wrap(&polygons[POLYGON_SHIP],
+          cr, &cm_display, &cm_object);
+      }
+
+      for (j = 0; j < SHIP_MAX; j = j + 1) {
+        cairo_matrix_t cm_object;
+
+        if (! bullets[j].is_alive) { continue; }
+
+        cairo_matrix_init_identity(&cm_object);
+        cairo_matrix_translate(&cm_object, bullets[j].x, bullets[j].y);
+        cairo_matrix_rotate(&cm_object, bullets[j].a);
+
+        polygon_render_wrap(&polygons[POLYGON_BULLET],
+          cr, &cm_display, &cm_object);
       }
 
       cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
@@ -185,7 +217,10 @@ int main(int argc, char **argv) {
 
     { /* Game Logic */
       SDL_Event event;
+      Uint32 now;
       int i, j;
+
+      now = SDL_GetTicks();
 
       while ( SDL_PollEvent(&event) ) {
         if (event.type == SDL_KEYDOWN) {
@@ -202,8 +237,14 @@ int main(int argc, char **argv) {
           struct ship *ship = &ships[joysticks[j].ship];
           SDL_Joystick *joystick = joysticks[j].sdl;
 
+          if (! ship->is_alive) {
+            joysticks[j].is_alive = 0;
+            continue;
+          }
+
           float steer = 0;
           float gas   = 0;
+          int   shoot = 0;
 
           /* Input */
 
@@ -212,19 +253,20 @@ int main(int argc, char **argv) {
             - SDL_JoystickGetAxis(joystick, 0) / 32768.0;
           gas   = gas   \
             + ( SDL_JoystickGetAxis(joystick, 4) / 32768.0 + 1 ) / 2.0;
+          shoot = shoot + SDL_JoystickGetButton(joystick, 0);
 
           /* Normalization */
 
           if (steer < -1) { steer = -1; }
           if (steer >  1) { steer =  1; }
           if (gas   >  1) { gas   =  1; }
+          if (shoot >  1) { shoot =  1; }
 
           ship->steer = steer;
           ship->gas   = gas;
+          ship->shoot = shoot;
         } else {
           if (! SDL_JoystickGetButton(joysticks[j].sdl, 0) ) { continue; }
-
-printf("foo\n");
 
           for (i = 0; i < SHIP_MAX; i = i + 1) {
             if (! ships[i].is_alive) { break; }
@@ -276,6 +318,58 @@ printf("foo\n");
         }
         if (ships[i].y > HEIGHT/SCALE) {
           ships[i].y = ships[i].y - HEIGHT/SCALE;
+        }
+
+        // shoot
+        if (ships[i].shoot && ! bullets[i].is_alive) {
+          bullets[i].is_alive = 1;
+          bullets[i].when = now;
+          bullets[i].x = ships[i].x;
+          bullets[i].y = ships[i].y;
+          bullets[i].a = ships[i].a;
+        }
+      }
+      for (i = 0; i < SHIP_MAX; i = i + 1) {
+        if (! bullets[i].is_alive) { continue; };
+
+        bullets[i].x = bullets[i].x + BULLET_VELOCITY * -sin(bullets[i].a);
+        bullets[i].y = bullets[i].y + BULLET_VELOCITY *  cos(bullets[i].a);
+
+        // wrap
+        if (bullets[i].x < 0) {
+          bullets[i].x = bullets[i].x + WIDTH/SCALE;
+        }
+        if (bullets[i].x > WIDTH/SCALE) {
+          bullets[i].x = bullets[i].x - WIDTH/SCALE;
+        }
+        if (bullets[i].y < 0) {
+          bullets[i].y = bullets[i].y + HEIGHT/SCALE;
+        }
+        if (bullets[i].y > HEIGHT/SCALE) {
+          bullets[i].y = bullets[i].y - HEIGHT/SCALE;
+        }
+
+        // expire
+        if (now - bullets[i].when > BULLET_TIME) {
+          bullets[i].is_alive = 0;
+        }
+      }
+
+      for (j = 0; j < SHIP_MAX; j = j + 1) {
+        if (! ships[j].is_alive) { continue; };
+
+        for (i = 0; i < SHIP_MAX; i = i + 1) {
+          float x = bullets[i].x - ships[j].x;
+          float y = bullets[i].y - ships[j].y;
+
+          if (! bullets[i].is_alive) { continue; }
+
+          if (i == j) { continue; }
+
+          if ( sqrt(x*x + y*y) < BULLET_RADIUS + SHIP_RADIUS ) {
+            bullets[i].is_alive = 0;
+            ships[j].is_alive = 0;
+          }
         }
       }
     }
