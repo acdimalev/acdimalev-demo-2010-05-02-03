@@ -18,11 +18,11 @@
 #define SHIP_DRAG    (1/4.0)
 #define SHIP_TACCEL  (4/1.0)
 #define SHIP_TDRAG   (63/64.0)
-#define SHIP_RADIUS  (1/32.0 / 2.0)
+#define SHIP_RADIUS  (1/16.0 / 2.0)
 
-#define BULLET_VELOCITY (1/32.0)
-#define BULLET_TIME (1024/4.0)
-#define BULLET_RADIUS  (1/128.0 / 2.0)
+#define BULLET_VELOCITY  (1/32.0)
+#define BULLET_TIME      (1024/4.0)
+#define BULLET_RADIUS    (1/64.0 / 2.0)
 
 #define METEOR_MAX       32
 #define METEOR_TYPE_MAX   3
@@ -112,25 +112,32 @@ int ngon(struct polygon *polygon, int n, float scale) {
   return 0;
 }
 
-void generate_meteor() {
-  int type = METEOR_TYPE_MAX - 1;
+int generate_meteor(int type) {
   float v = meteor_types[type].velocity;
   float av = meteor_types[type].angular_velocity;
   float a = 2*M_PI * frand();
+  int i;
 
-  meteors[0].is_alive = 1;
-  meteors[0].type = type;
+  for (i = 0; i < METEOR_MAX; i = i + 1) {
+    if (! meteors[i].is_alive) { break; }
+  }
+  if (i == METEOR_MAX) { return -1; }
 
-  meteors[0].x = WIDTH/SCALE * frand();
-  meteors[0].y = HEIGHT/SCALE * frand();
-  meteors[0].a = 2*M_PI * frand();
+  meteors[i].is_alive = 1;
+  meteors[i].type = type;
 
-  meteors[0].xv = v * -sin(a);
-  meteors[0].yv = v *  cos(a);
-  meteors[0].av = 2*M_PI * av * (frand() - 1/2.0);
+  meteors[i].x = WIDTH/SCALE * frand();
+  meteors[i].y = HEIGHT/SCALE * frand();
+  meteors[i].a = 2*M_PI * frand();
+
+  meteors[i].xv = v * -sin(a);
+  meteors[i].yv = v *  cos(a);
+  meteors[i].av = 2*M_PI * av * (frand() - 1/2.0);
+
+  return i;
 }
 
-void meteor_explode(struct meteor *meteor) {
+int meteor_explode(struct meteor *meteor) {
   int type = meteor->type;
   int density;
   int i, j;
@@ -138,30 +145,19 @@ void meteor_explode(struct meteor *meteor) {
   if (type != 0) {
     density = meteor_types[type-1].density / meteor_types[type].density;
     for (j = 0; j < density; j = j + 1) {
-      for (i = 0; i < METEOR_MAX; i = i + 1) {
-        float v = meteor_types[type-1].velocity;
-        float av = meteor_types[type-1].angular_velocity;
-        float a = 2*M_PI * frand();
-
-        if (meteors[i].is_alive) { continue; }
-
-        meteors[i].is_alive = 1;
-        meteors[i].type = type - 1;
-
-        meteors[i].x = meteor->x;
-        meteors[i].y = meteor->y;
-        meteors[i].a = 2*M_PI * frand();
-
-        meteors[i].xv = v * -sin(a);
-        meteors[i].yv = v *  cos(a);
-        meteors[i].av = 2*M_PI * av * (frand() - 1/2.0);
-
-        break;
+      i = generate_meteor(type - 1);
+      if (i == -1) {
+        return -1;
       }
+
+      meteors[i].x = meteor->x;
+      meteors[i].y = meteor->y;
     }
   }
 
   meteor->is_alive = 0;
+
+  return 0;
 }
 
 void polygon_render(
@@ -280,7 +276,7 @@ int main(int argc, char **argv) {
       meteor_types[i].polygon = i;
     }
 
-    generate_meteor();
+    generate_meteor(METEOR_TYPE_MAX - 1);
   }
 
   { /* Initialize Delay */
