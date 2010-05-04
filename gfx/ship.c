@@ -13,11 +13,11 @@ void polygon_load_ship(struct polygon *polygon) {
   float x = 1/2.0 * -sin(2*M_PI * 1 / 3.0);
   float y = 1/2.0 *  cos(2*M_PI * 1 / 3.0);
 
-  v[0][0] =            SCALE * (-x);
-  v[1][0] =            SCALE * ( 0);
-  v[2][0] =            SCALE * ( x);
+  v[0][0] =           SCALE * (-x);
+  v[1][0] =           SCALE * ( 0);
+  v[2][0] =           SCALE * ( x);
 
-  v[1][1] =            SCALE * ( 1/2.0);
+  v[1][1] =           SCALE * ( 1/2.0);
   v[2][1] = v[0][1] = SCALE * ( y);
 
   v[4][0] = v[3][0] = SCALE * (-NOTCH / 2.0);
