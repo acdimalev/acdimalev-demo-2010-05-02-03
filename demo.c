@@ -396,6 +396,7 @@ int main(int argc, char **argv) {
 
           steer = steer + keystate[SDLK_LEFT];
           steer = steer - keystate[SDLK_RIGHT];
+          gas   = gas   + keystate[SDLK_UP];
           gas   = gas   + keystate[SDLK_LSHIFT];
           shoot = shoot + keystate[SDLK_LCTRL];
 
