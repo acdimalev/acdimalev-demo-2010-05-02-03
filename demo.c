@@ -6,7 +6,7 @@
 
 #include "config.h"
 
-#define SCALE   sqrt(PIXELS)
+#define SCALE  sqrt(PIXELS)
 
 #define SHIP_MAX      4
 #define JOYSTICK_MAX  4
@@ -17,7 +17,7 @@
 #define SHIP_TDRAG   (63/64.0)
 #define SHIP_RADIUS  (1/16.0 / 2.0)
 
-#define BULLET_VELOCITY  (1/32.0)
+#define BULLET_VELOCITY  (1/1.0)
 #define BULLET_TIME      (1024/4.0)
 #define BULLET_RADIUS    (1/64.0 / 2.0)
 
@@ -34,6 +34,8 @@ struct joystick {
     SDL_Joystick *sdl;
     int ship;
   } joysticks[JOYSTICK_MAX];
+
+int keyboard_is_alive, keyboard_ship;
 
 struct ship {
     int is_alive;
@@ -248,6 +250,8 @@ int main(int argc, char **argv) {
     polygon_load_ship(&polygons[POLYGON_SHIP]);
     polygon_load_bullet(&polygons[POLYGON_BULLET]);
 
+    keyboard_is_alive = 0;
+
     for (i = 0; i < JOYSTICK_MAX; i = i + 1) {
       SDL_Joystick *sdl_joystick;
 
@@ -372,6 +376,61 @@ int main(int argc, char **argv) {
         }
       }
 
+      while (1) {
+        Uint8 *keystate;
+
+        keystate = SDL_GetKeyState(NULL);
+        if (keyboard_is_alive) {
+          struct ship *ship = &ships[keyboard_ship];
+
+          if (! ship->is_alive) {
+            keyboard_is_alive = 0;
+            break;
+          }
+
+          float steer = 0;
+          float gas   = 0;
+          int   shoot = 0;
+
+          /* Input */
+
+          steer = steer + keystate[SDLK_LEFT];
+          steer = steer - keystate[SDLK_RIGHT];
+          gas   = gas   + keystate[SDLK_LSHIFT];
+          shoot = shoot + keystate[SDLK_LCTRL];
+
+          /* Normalization */
+
+          if (steer < -1) { steer = -1; }
+          if (steer >  1) { steer =  1; }
+          if (gas   >  1) { gas   =  1; }
+          if (shoot >  1) { shoot =  1; }
+
+          ship->steer = steer;
+          ship->gas   = gas;
+          ship->shoot = shoot;
+        } else {
+          if (! keystate[SDLK_LCTRL] ) { break; }
+
+          for (i = 0; i < SHIP_MAX; i = i + 1) {
+            if (! ships[i].is_alive) { break; }
+          }
+          if (i == SHIP_MAX) {
+            error(0, 0, "Out of ships.");
+            continue;
+          }
+          keyboard_is_alive = 1;
+          keyboard_ship = i;
+
+          ships[i].is_alive = 1;
+          ships[i].x = WIDTH/SCALE * frand();
+          ships[i].y = HEIGHT/SCALE * frand();
+          ships[i].a = 2*M_PI * frand();
+        }
+
+        break;
+      }
+
       for (j = 0; j < JOYSTICK_MAX; j = j + 1) {
         if (! joysticks[j].sdl) { continue; }
 
@@ -427,6 +486,8 @@ int main(int argc, char **argv) {
         }
       }
 
+      /* Physics */
+
       for (i = 0; i < SHIP_MAX; i = i + 1) {
         if (! ships[i].is_alive) { continue; };
 
@@ -474,8 +535,10 @@ int main(int argc, char **argv) {
       for (i = 0; i < SHIP_MAX; i = i + 1) {
         if (! bullets[i].is_alive) { continue; };
 
-        bullets[i].x = bullets[i].x + BULLET_VELOCITY * -sin(bullets[i].a);
-        bullets[i].y = bullets[i].y + BULLET_VELOCITY *  cos(bullets[i].a);
+        bullets[i].x = bullets[i].x \
+          + BULLET_VELOCITY * -sin(bullets[i].a) / FPS;
+        bullets[i].y = bullets[i].y \
+          + BULLET_VELOCITY *  cos(bullets[i].a) / FPS;
 
         // wrap
         if (bullets[i].x < 0) {
@@ -517,6 +580,8 @@ int main(int argc, char **argv) {
           meteors[i].y = meteors[i].y - HEIGHT/SCALE;
         }
       }
+
+      /* Collisions */
 
       for (j = 0; j < SHIP_MAX; j = j + 1) {
         if (! bullets[j].is_alive) { continue; }
