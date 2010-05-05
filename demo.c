@@ -4,12 +4,9 @@
 #include "SDL.h"
 #include "demo.h"
 
-#define RESMUL  (10 * 2 * 2 * 2 * 2)
+#include "config.h"
 
-#define WIDTH   (RESMUL * 8)
-#define HEIGHT  (RESMUL * 5)
-#define SCALE   sqrt(HEIGHT * WIDTH)
-#define FPS     30
+#define SCALE   sqrt(PIXELS)
 
 #define SHIP_MAX      4
 #define JOYSTICK_MAX  4
@@ -209,7 +206,12 @@ int main(int argc, char **argv) {
 
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK);
   SDL_ShowCursor(0);
+#if FULLSCREEN
   SDL_SetVideoMode(WIDTH, HEIGHT, 32, SDL_FULLSCREEN);
+#else
+  SDL_SetVideoMode(WIDTH, HEIGHT, 32, 0);
+#endif
+
   sdl_surface = SDL_GetVideoSurface();
 
   { /* Initialize Canvas */
@@ -276,6 +278,7 @@ int main(int argc, char **argv) {
       meteor_types[i].polygon = i;
     }
 
+    generate_meteor(METEOR_TYPE_MAX - 1);
     generate_meteor(METEOR_TYPE_MAX - 1);
   }
 
@@ -519,8 +522,8 @@ int main(int argc, char **argv) {
         if (! bullets[j].is_alive) { continue; }
 
         for (i = 0; i < SHIP_MAX; i = i + 1) {
-          if (! ships[i].is_alive) { continue; };
           if (i == j) { continue; }
+          if (! ships[i].is_alive) { continue; };
 
           if ( collides_wrap(
             bullets[j].x, bullets[j].y, BULLET_RADIUS,
@@ -547,20 +550,20 @@ int main(int argc, char **argv) {
         }
       }
 
-      for (j = 0; j < SHIP_MAX; j = j + 1) {
-        if (! ships[j].is_alive) { continue; };
+      for (j = 0; j < METEOR_MAX; j = j + 1) {
+        if (! meteors[j].is_alive) { continue; };
 
-        for (i = 0; i < METEOR_MAX; i = i + 1) {
-          if (! meteors[i].is_alive) { continue; };
+        for (i = 0; i < SHIP_MAX; i = i + 1) {
+          if (! ships[i].is_alive) { continue; };
 
           if ( collides_wrap(
-            ships[j].x, ships[j].y, SHIP_RADIUS,
-            meteors[i].x, meteors[i].y,
-            meteor_types[meteors[i].type].scale / 2.0
+            ships[i].x, ships[i].y, SHIP_RADIUS,
+            meteors[j].x, meteors[j].y,
+            meteor_types[meteors[j].type].scale / 2.0
             ) ) {
 
-            ships[j].is_alive = 0;
-            meteor_explode(&meteors[i]);
+            ships[i].is_alive = 0;
+            meteor_explode(&meteors[j]);
           }
         }
       }
