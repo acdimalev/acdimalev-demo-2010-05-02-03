@@ -207,11 +207,11 @@ int main(int argc, char **argv) {
   int running;
 
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK);
-  SDL_ShowCursor(0);
 #if FULLSCREEN
-  SDL_SetVideoMode(WIDTH, HEIGHT, 32, SDL_FULLSCREEN);
+  SDL_SetVideoMode(HRES, VRES, 32, SDL_FULLSCREEN);
+  SDL_ShowCursor(0);
 #else
-  SDL_SetVideoMode(WIDTH, HEIGHT, 32, 0);
+  SDL_SetVideoMode(HRES, VRES, 32, 0);
 #endif
 
   sdl_surface = SDL_GetVideoSurface();
@@ -235,11 +235,13 @@ int main(int argc, char **argv) {
     cairo_matrix_init_identity(m);
 
     // Cartesian
-    cairo_matrix_translate(m, WIDTH/2.0, HEIGHT/2.0);
+    cairo_matrix_translate(m, HRES/2.0, VRES/2.0);
     cairo_matrix_scale(m,  1, -1);
 
     // fixed scale
-    cairo_matrix_scale(m, SCALE, SCALE);
+    cairo_matrix_scale(m,
+      SCALE * 1.0 * HRES / WIDTH,
+      SCALE * 1.0 * VRES / HEIGHT);
   }
 
   { /* Game Logic */
@@ -352,13 +354,15 @@ int main(int argc, char **argv) {
     SDL_LockSurface(sdl_surface);
 
     { /* Delay */
-      Uint32 now;
+      Uint32 now = SDL_GetTicks();
 
-      now = SDL_GetTicks();
       if (now < next_frame) {
         SDL_Delay(next_frame - now);
+        next_frame = next_frame + 1024.0 / FPS;
+      } else {
+        error(0, 0, "delay counter reset");
+        next_frame = now + 1024.0 / FPS;
       }
-      next_frame = next_frame + 1024.0 / FPS;
     }
 
     { /* Game Logic */
@@ -369,6 +373,9 @@ int main(int argc, char **argv) {
       now = SDL_GetTicks();
 
       while ( SDL_PollEvent(&event) ) {
+        if (event.type == SDL_QUIT) {
+          running = 0;
+        }
         if (event.type == SDL_KEYDOWN) {
           if (event.key.keysym.sym == SDLK_q) {
             running = 0;

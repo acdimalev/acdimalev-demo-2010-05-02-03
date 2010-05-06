@@ -7,3 +7,6 @@
 
 #define WIDTH  ((int) sqrt(PIXELS * ASPECT))
 #define HEIGHT ((int) sqrt(PIXELS / ASPECT))
+
+#define HRES  WIDTH
+#define VRES  HEIGHT
