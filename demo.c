@@ -641,6 +641,14 @@ int main(int argc, char **argv) {
         }
       }
 
+      for (i = 0; i < METEOR_MAX; i = i + 1) {
+        if (meteors[i].is_alive) { break; }
+      }
+      if (i == METEOR_MAX) {
+        generate_meteor(METEOR_TYPE_MAX - 1);
+        generate_meteor(METEOR_TYPE_MAX - 1);
+      }
+
     }
 
   }
