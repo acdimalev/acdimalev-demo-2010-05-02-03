@@ -6,8 +6,6 @@
 
 #include "config.h"
 
-#define SCALE  sqrt(PIXELS)
-
 #define SHIP_MAX      4
 #define JOYSTICK_MAX  4
 
@@ -23,6 +21,9 @@
 
 #define METEOR_MAX       32
 #define METEOR_TYPE_MAX   3
+
+int hres, vres, width, height, pixels;
+double aspect, scale;
 
 struct polygon polygons[2];
 struct polygon polygons_meteor[METEOR_TYPE_MAX];
@@ -87,9 +88,9 @@ int collides_wrap(float x1, float y1, float r1, float x2, float y2, float r2) {
   int a = 0;
 
   a = a || collides(x1, y1, r1, x2, y2, r2);
-  a = a || collides(x1 + WIDTH/SCALE, y1, r1, x2, y2, r2);
-  a = a || collides(x1, y1 + HEIGHT/SCALE, r1, x2, y2, r2);
-  a = a || collides(x1 + WIDTH/SCALE, y1 + HEIGHT/SCALE, r1, x2, y2, r2);
+  a = a || collides(x1 + width/scale, y1, r1, x2, y2, r2);
+  a = a || collides(x1, y1 + height/scale, r1, x2, y2, r2);
+  a = a || collides(x1 + width/scale, y1 + height/scale, r1, x2, y2, r2);
 
   return a;
 }
@@ -125,8 +126,8 @@ int generate_meteor(int type) {
   meteors[i].is_alive = 1;
   meteors[i].type = type;
 
-  meteors[i].x = WIDTH/SCALE * frand();
-  meteors[i].y = HEIGHT/SCALE * frand();
+  meteors[i].x = width/scale * frand();
+  meteors[i].y = height/scale * frand();
   meteors[i].a = 2*M_PI * frand();
 
   meteors[i].xv = v * -sin(a);
@@ -187,19 +188,20 @@ void polygon_render_wrap(
   cairo_matrix_init_translate(&cm_wrap_object, 0, 0);
   cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
   polygon_render(polygon, cr, cm_display, &cm_wrap_object);
-  cairo_matrix_init_translate(&cm_wrap_object, -WIDTH/SCALE, 0);
+  cairo_matrix_init_translate(&cm_wrap_object, -width/scale, 0);
   cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
   polygon_render(polygon, cr, cm_display, &cm_wrap_object);
-  cairo_matrix_init_translate(&cm_wrap_object, 0, -HEIGHT/SCALE);
+  cairo_matrix_init_translate(&cm_wrap_object, 0, -height/scale);
   cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
   polygon_render(polygon, cr, cm_display, &cm_wrap_object);
-  cairo_matrix_init_translate(&cm_wrap_object, -WIDTH/SCALE, -HEIGHT/SCALE);
+  cairo_matrix_init_translate(&cm_wrap_object, -width/scale, -height/scale);
   cairo_matrix_multiply(&cm_wrap_object, cm_object, &cm_wrap_object);
   polygon_render(polygon, cr, cm_display, &cm_wrap_object);
 }
 
 int main(int argc, char **argv) {
   SDL_Surface *sdl_surface;
+  SDL_Rect **modes;
   Uint32 next_frame;
   cairo_t *cr;
   cairo_matrix_t cm_display;
@@ -207,11 +209,21 @@ int main(int argc, char **argv) {
   int running;
 
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK);
+  modes = SDL_ListModes(NULL, SDL_FULLSCREEN);
+  if (NULL == modes) {
+    fprintf(stderr, "no video modes available\n");
+    exit(0);
+  }
+  hres = width  = modes[0]->w;
+  vres = height = modes[0]->h;
+  aspect = (double) hres / vres;
+  pixels = hres * vres;
+  scale = sqrt(pixels);
 #if FULLSCREEN
-  SDL_SetVideoMode(HRES, VRES, 32, SDL_FULLSCREEN);
+  SDL_SetVideoMode(hres, vres, 32, SDL_FULLSCREEN);
   SDL_ShowCursor(0);
 #else
-  SDL_SetVideoMode(HRES, VRES, 32, 0);
+  SDL_SetVideoMode(hres, vres, 32, 0);
 #endif
 
   sdl_surface = SDL_GetVideoSurface();
@@ -235,13 +247,13 @@ int main(int argc, char **argv) {
     cairo_matrix_init_identity(m);
 
     // Cartesian
-    cairo_matrix_translate(m, HRES/2.0, VRES/2.0);
+    cairo_matrix_translate(m, hres/2.0, vres/2.0);
     cairo_matrix_scale(m,  1, -1);
 
     // fixed scale
     cairo_matrix_scale(m,
-      SCALE * 1.0 * HRES / WIDTH,
-      SCALE * 1.0 * VRES / HEIGHT);
+      scale * 1.0 * hres / width,
+      scale * 1.0 * vres / height);
   }
 
   { /* Game Logic */
@@ -360,7 +372,7 @@ int main(int argc, char **argv) {
         SDL_Delay(next_frame - now);
         next_frame = next_frame + 1024.0 / FPS;
       } else {
-        error(0, 0, "delay counter reset");
+        fprintf(stderr, "delay counter reset\n");
         next_frame = now + 1024.0 / FPS;
       }
     }
@@ -424,15 +436,15 @@ int main(int argc, char **argv) {
             if (! ships[i].is_alive) { break; }
           }
           if (i == SHIP_MAX) {
-            error(0, 0, "Out of ships.");
+            fprintf(stderr, "out of ships\n");
             continue;
           }
           keyboard_is_alive = 1;
           keyboard_ship = i;
 
           ships[i].is_alive = 1;
-          ships[i].x = WIDTH/SCALE * frand();
-          ships[i].y = HEIGHT/SCALE * frand();
+          ships[i].x = width/scale * frand();
+          ships[i].y = height/scale * frand();
           ships[i].a = 2*M_PI * frand();
         }
 
@@ -481,15 +493,15 @@ int main(int argc, char **argv) {
             if (! ships[i].is_alive) { break; }
           }
           if (i == SHIP_MAX) {
-            error(0, 0, "Out of ships.");
+            fprintf(stderr, "out of ships\n");
             continue;
           }
           joysticks[j].is_alive = 1;
           joysticks[j].ship = i;
 
           ships[i].is_alive = 1;
-          ships[i].x = WIDTH/SCALE * frand();
-          ships[i].y = HEIGHT/SCALE * frand();
+          ships[i].x = width/scale * frand();
+          ships[i].y = height/scale * frand();
           ships[i].a = 2*M_PI * frand();
         }
       }
@@ -519,16 +531,16 @@ int main(int argc, char **argv) {
 
         // wrap
         if (ships[i].x < 0) {
-          ships[i].x = ships[i].x + WIDTH/SCALE;
+          ships[i].x = ships[i].x + width/scale;
         }
-        if (ships[i].x > WIDTH/SCALE) {
-          ships[i].x = ships[i].x - WIDTH/SCALE;
+        if (ships[i].x > width/scale) {
+          ships[i].x = ships[i].x - width/scale;
         }
         if (ships[i].y < 0) {
-          ships[i].y = ships[i].y + HEIGHT/SCALE;
+          ships[i].y = ships[i].y + height/scale;
         }
-        if (ships[i].y > HEIGHT/SCALE) {
-          ships[i].y = ships[i].y - HEIGHT/SCALE;
+        if (ships[i].y > height/scale) {
+          ships[i].y = ships[i].y - height/scale;
         }
 
         // shoot
@@ -550,16 +562,16 @@ int main(int argc, char **argv) {
 
         // wrap
         if (bullets[i].x < 0) {
-          bullets[i].x = bullets[i].x + WIDTH/SCALE;
+          bullets[i].x = bullets[i].x + width/scale;
         }
-        if (bullets[i].x > WIDTH/SCALE) {
-          bullets[i].x = bullets[i].x - WIDTH/SCALE;
+        if (bullets[i].x > width/scale) {
+          bullets[i].x = bullets[i].x - width/scale;
         }
         if (bullets[i].y < 0) {
-          bullets[i].y = bullets[i].y + HEIGHT/SCALE;
+          bullets[i].y = bullets[i].y + height/scale;
         }
-        if (bullets[i].y > HEIGHT/SCALE) {
-          bullets[i].y = bullets[i].y - HEIGHT/SCALE;
+        if (bullets[i].y > height/scale) {
+          bullets[i].y = bullets[i].y - height/scale;
         }
 
         // expire
@@ -576,16 +588,16 @@ int main(int argc, char **argv) {
         meteors[i].a = meteors[i].a + meteors[i].av / FPS;
 
         if (meteors[i].x < 0) {
-          meteors[i].x = meteors[i].x + WIDTH/SCALE;
+          meteors[i].x = meteors[i].x + width/scale;
         }
-        if (meteors[i].x > WIDTH/SCALE) {
-          meteors[i].x = meteors[i].x - WIDTH/SCALE;
+        if (meteors[i].x > width/scale) {
+          meteors[i].x = meteors[i].x - width/scale;
         }
         if (meteors[i].y < 0) {
-          meteors[i].y = meteors[i].y + HEIGHT/SCALE;
+          meteors[i].y = meteors[i].y + height/scale;
         }
-        if (meteors[i].y > HEIGHT/SCALE) {
-          meteors[i].y = meteors[i].y - HEIGHT/SCALE;
+        if (meteors[i].y > height/scale) {
+          meteors[i].y = meteors[i].y - height/scale;
         }
       }
 
