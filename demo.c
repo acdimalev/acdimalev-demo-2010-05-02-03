@@ -301,7 +301,9 @@ int main(int argc, char **argv) {
         }
       }
 
-      fprintf(stderr, "unrecognized joystick: %s\n", name);
+      if (j == n_joystick_ids) {
+        fprintf(stderr, "unrecognized joystick: %s\n", name);
+      }
     }
 
     n_controllers = n;
