@@ -30,13 +30,31 @@ struct polygon polygons_meteor[METEOR_TYPE_MAX];
 
 enum polygon_enum { POLYGON_SHIP, POLYGON_BULLET };
 
-struct joystick {
-    int is_alive;
-    SDL_Joystick *sdl;
-    int ship;
-  } joysticks[JOYSTICK_MAX];
+enum controller_type {
+  KEYBOARD,
+  JOYSTICK_XBOX360,
+  JOYSTICK_PS3
+};
 
-int keyboard_is_alive, keyboard_ship;
+/* one keyboard, four gamepads */
+#define CONTROLLER_MAX 5
+
+int n_controllers = 0;
+struct controller {
+  enum controller_type type;
+  SDL_Joystick *joystick;
+  int is_alive;
+  int ship;
+} controllers[CONTROLLER_MAX];
+
+int n_joystick_ids = 2;
+struct joystick_id {
+  char *name;
+  enum controller_type type;
+} joystick_ids[] = {
+  "Xbox Gamepad (userspace driver)", JOYSTICK_XBOX360,
+  "Sony PLAYSTATION(R)3 Controller", JOYSTICK_PS3
+};
 
 struct ship {
     int is_alive;
@@ -256,6 +274,39 @@ int main(int argc, char **argv) {
       scale * 1.0 * vres / height);
   }
 
+  { /* Controllers */
+    int i, j;
+
+    int n = 0;
+    int n_joysticks = SDL_NumJoysticks();
+
+    controllers[n].type = KEYBOARD;
+    n = n + 1;
+
+    for (i = 0; i < n_joysticks; i = i + 1) {
+      const char *name = SDL_JoystickName(i);
+
+      if (CONTROLLER_MAX == n) {
+        fprintf(stderr, "out of controller slots\n");
+        break;
+      }
+
+      for (j = 0; j < n_joystick_ids; j = j + 1) {
+        if (! strcmp(joystick_ids[j].name, name) ) {
+          controllers[n].type = joystick_ids[j].type;
+          controllers[n].joystick = SDL_JoystickOpen(i);
+          controllers[n].is_alive = 0;
+          n = n + 1;
+          break;
+        }
+      }
+
+      fprintf(stderr, "unrecognized joystick: %s\n", name);
+    }
+
+    n_controllers = n;
+  }
+
   { /* Game Logic */
     int i;
 
@@ -263,20 +314,6 @@ int main(int argc, char **argv) {
 
     polygon_load_ship(&polygons[POLYGON_SHIP]);
     polygon_load_bullet(&polygons[POLYGON_BULLET]);
-
-    keyboard_is_alive = 0;
-
-    for (i = 0; i < JOYSTICK_MAX; i = i + 1) {
-      SDL_Joystick *sdl_joystick;
-
-      sdl_joystick = SDL_JoystickOpen(i);
-      if (sdl_joystick) {
-        joysticks[i].is_alive = 0;
-        joysticks[i].sdl = sdl_joystick;
-      } else {
-        joysticks[i].is_alive = 0;
-      }
-    }
 
     for (i = 0; i < SHIP_MAX; i = i + 1) {
       ships[i].is_alive = 0;
@@ -395,99 +432,76 @@ int main(int argc, char **argv) {
         }
       }
 
-      while (1) {
-        Uint8 *keystate;
+      Uint8 *keystate = SDL_GetKeyState(NULL);
 
-        keystate = SDL_GetKeyState(NULL);
-        if (keyboard_is_alive) {
-          struct ship *ship = &ships[keyboard_ship];
+      for (j = 0; j < n_controllers; j = j + 1) {
+        struct controller *controller = &controllers[j];
+        float steer = 0;
+        float gas   = 0;
+        int   shoot = 0;
 
-          if (! ship->is_alive) {
-            keyboard_is_alive = 0;
+        SDL_Joystick *joystick = controller->joystick;
+
+        /* Input */
+
+        switch (controller->type) {
+          case KEYBOARD:
+            steer = steer + keystate[SDLK_LEFT];
+            steer = steer - keystate[SDLK_RIGHT];
+            gas   = gas   + keystate[SDLK_UP];
+            gas   = gas   + keystate[SDLK_LSHIFT];
+            shoot = shoot + keystate[SDLK_LCTRL];
             break;
-          }
-
-          float steer = 0;
-          float gas   = 0;
-          int   shoot = 0;
-
-          /* Input */
-
-          steer = steer + keystate[SDLK_LEFT];
-          steer = steer - keystate[SDLK_RIGHT];
-          gas   = gas   + keystate[SDLK_UP];
-          gas   = gas   + keystate[SDLK_LSHIFT];
-          shoot = shoot + keystate[SDLK_LCTRL];
-
-          /* Normalization */
-
-          if (steer < -1) { steer = -1; }
-          if (steer >  1) { steer =  1; }
-          if (gas   >  1) { gas   =  1; }
-          if (shoot >  1) { shoot =  1; }
-
-          ship->steer = steer;
-          ship->gas   = gas;
-          ship->shoot = shoot;
-        } else {
-          if (! keystate[SDLK_LCTRL] ) { break; }
-
-          for (i = 0; i < SHIP_MAX; i = i + 1) {
-            if (! ships[i].is_alive) { break; }
-          }
-          if (i == SHIP_MAX) {
-            fprintf(stderr, "out of ships\n");
-            continue;
-          }
-          keyboard_is_alive = 1;
-          keyboard_ship = i;
-
-          ships[i].is_alive = 1;
-          ships[i].x = width/scale * frand();
-          ships[i].y = height/scale * frand();
-          ships[i].a = 2*M_PI * frand();
+          case JOYSTICK_XBOX360:
+            /* Left Analog */
+            steer = steer \
+              - SDL_JoystickGetAxis(joystick, 0) / 32767.0;
+            /* Right Trigger */
+            gas   = gas   \
+              + ( SDL_JoystickGetAxis(joystick, 4) / 32767.0 + 1 ) / 2.0;
+            /* A Button */
+            shoot = shoot + SDL_JoystickGetButton(joystick, 0);
+            break;
+          case JOYSTICK_PS3:
+            /* Left Analog */
+            steer = steer \
+              - SDL_JoystickGetAxis(joystick, 0) / 32767.0;
+            /* D-Pad Left */
+            steer = steer \
+              + ( SDL_JoystickGetAxis(joystick, 11) / 32767.0 + 1 ) / 2.0;
+            /* D-Pad Right */
+            steer = steer \
+              - ( SDL_JoystickGetAxis(joystick, 9) / 32767.0 + 1 ) / 2.0;
+            /* Right Trigger */
+            gas   = gas \
+              + ( SDL_JoystickGetAxis(joystick, 13) / 32767.0 + 1 ) / 2.0;
+            /* X Button */
+            shoot = shoot + SDL_JoystickGetButton(joystick, 14);
+            break;
         }
 
-        break;
-      }
+        /* Normalization */
 
-      for (j = 0; j < JOYSTICK_MAX; j = j + 1) {
-        if (! joysticks[j].sdl) { continue; }
+        if (steer < -1) { steer = -1; }
+        if (steer >  1) { steer =  1; }
+        if (gas   >  1) { gas   =  1; }
+        if (shoot >  1) { shoot =  1; }
 
-        if (joysticks[j].is_alive) {
-          struct ship *ship = &ships[joysticks[j].ship];
-          SDL_Joystick *joystick = joysticks[j].sdl;
+        /* Demo Logic */
+
+        if (controller->is_alive) {
+          struct ship *ship = &ships[controller->ship];
 
           if (! ship->is_alive) {
-            joysticks[j].is_alive = 0;
+            controller->is_alive = 0;
             continue;
           }
-
-          float steer = 0;
-          float gas   = 0;
-          int   shoot = 0;
-
-          /* Input */
-
-          // Xbox 360 Controller
-          steer = steer \
-            - SDL_JoystickGetAxis(joystick, 0) / 32768.0;
-          gas   = gas   \
-            + ( SDL_JoystickGetAxis(joystick, 4) / 32768.0 + 1 ) / 2.0;
-          shoot = shoot + SDL_JoystickGetButton(joystick, 0);
-
-          /* Normalization */
-
-          if (steer < -1) { steer = -1; }
-          if (steer >  1) { steer =  1; }
-          if (gas   >  1) { gas   =  1; }
-          if (shoot >  1) { shoot =  1; }
 
           ship->steer = steer;
           ship->gas   = gas;
           ship->shoot = shoot;
         } else {
-          if (! SDL_JoystickGetButton(joysticks[j].sdl, 0) ) { continue; }
+          if (!shoot) { continue; }
 
           for (i = 0; i < SHIP_MAX; i = i + 1) {
             if (! ships[i].is_alive) { break; }
@@ -496,8 +510,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "out of ships\n");
             continue;
           }
-          joysticks[j].is_alive = 1;
-          joysticks[j].ship = i;
+          controller->is_alive = 1;
+          controller->ship = i;
 
           ships[i].is_alive = 1;
           ships[i].x = width/scale * frand();
